@@ -1,136 +1,57 @@
 package main
 
 import (
+	"app/pkg/test2"
+	"flag"
 	"fmt"
-	"math/rand"
-	"time"
-	"unsafe"
 )
 
-const (
-	// Size of the array in bytes (256 MB by default)
-	arraySize = 256 * 1024 * 1024
-	// Number of iterations for the test
-	iterations = 1000000
-)
+func main() {
+	// Create default config
+	config := test2.NewDefaultConfig()
 
-// Node represents a node in a linked list for pointer chasing
-type Node struct {
-	next  *Node
-	dummy [56]byte // padding to make Node size 64 bytes (cache line size)
+	// Define command line flags
+	flag.IntVar(&config.SizeInMB, "size", config.SizeInMB, "Size of memory to test in MB")
+	flag.IntVar(&config.Iterations, "iter", config.Iterations, "Number of iterations for memory tests")
+	runBasicPtr := flag.Bool("basic", true, "Run basic memory tests")
+	runAdvancedPtr := flag.Bool("advanced", true, "Run advanced memory tests")
+	runCachePtr := flag.Bool("cache", true, "Run cache detection and testing")
+	showHelp := flag.Bool("help", false, "Show help")
+
+	// Parse command line arguments
+	flag.Parse()
+
+	// Update config with flag values
+	config.RunBasicTests = *runBasicPtr
+	config.RunAdvanced = *runAdvancedPtr
+	config.RunCacheTests = *runCachePtr
+
+	// Show help if requested
+	if *showHelp {
+		printHelp()
+		return
+	}
+
+	// Create tester with the configured settings
+	tester := test2.NewMemTester(config)
+
+	// Run all tests
+	tester.RunAll()
 }
 
-// randomAccessTest measures latency for random memory access
-func randomAccessTest() {
-	// Create a large array
-	data := make([]int64, arraySize/8)
-
-	// Fill with some values
-	for i := range data {
-		data[i] = int64(i)
-	}
-
-	// Random access
-	fmt.Println("\nRandom Access Test:")
-	fmt.Printf("Array size: %d MB\n", arraySize/(1024*1024))
-
-	// Warm up
-	for i := 0; i < 1000; i++ {
-		idx := rand.Intn(len(data))
-		_ = data[idx]
-	}
-
-	// Measure
-	start := time.Now()
-	sum := int64(0)
-
-	for i := 0; i < iterations; i++ {
-		idx := rand.Intn(len(data))
-		sum += data[idx]
-	}
-
-	elapsed := time.Since(start)
-	nsPerAccess := float64(elapsed.Nanoseconds()) / float64(iterations)
-
-	fmt.Printf("Random access latency: %.2f ns (sum: %d)\n", nsPerAccess, sum)
-}
-
-// sequentialAccessTest measures latency for sequential memory access
-func sequentialAccessTest() {
-	// Create a large array
-	data := make([]int64, arraySize/8)
-
-	// Fill with some values
-	for i := range data {
-		data[i] = int64(i)
-	}
-
-	// Sequential access
-	fmt.Println("\nSequential Access Test:")
-	fmt.Printf("Array size: %d MB\n", arraySize/(1024*1024))
-
-	// Warm up
-	for i := 0; i < 1000; i++ {
-		_ = data[i%len(data)]
-	}
-
-	// Measure
-	start := time.Now()
-	sum := int64(0)
-
-	for i := 0; i < iterations; i++ {
-		idx := i % len(data)
-		sum += data[idx]
-	}
-
-	elapsed := time.Since(start)
-	nsPerAccess := float64(elapsed.Nanoseconds()) / float64(iterations)
-
-	fmt.Printf("Sequential access latency: %.2f ns (sum: %d)\n", nsPerAccess, sum)
-}
-
-// pointerChasingTest provides a more accurate latency measurement
-// by creating a linked list with randomized pointers, then traversing it
-func pointerChasingTest() {
-	fmt.Println("\nPointer Chasing Test (Most Accurate for Latency):")
-
-	// Create array of nodes
-	nodeCount := arraySize / 64 // 64 bytes per node
-	nodes := make([]Node, nodeCount)
-
-	// Create a random permutation for true random access pattern
-	indices := rand.Perm(nodeCount)
-
-	// Link nodes in a random order to force cache misses
-	for i := 0; i < nodeCount-1; i++ {
-		nodes[indices[i]].next = &nodes[indices[i+1]]
-	}
-	// Connect the last node back to a random node (not the first)
-	randomIdx := rand.Intn(nodeCount-2) + 1
-	nodes[indices[nodeCount-1]].next = &nodes[indices[randomIdx]]
-
-	// Start at a random position
-	current := &nodes[indices[0]]
-
-	// Warm up
-	for i := 0; i < 1000; i++ {
-		current = current.next
-	}
-
-	// Measure pointer chasing latency
-	start := time.Now()
-	node := current
-	count := 0
-
-	for i := 0; i < iterations; i++ {
-		node = node.next
-		count++
-	}
-
-	elapsed := time.Since(start)
-	nsPerAccess := float64(elapsed.Nanoseconds()) / float64(iterations)
-
-	fmt.Printf("Array size: %d MB, Nodes: %d\n", arraySize/(1024*1024), nodeCount)
-	fmt.Printf("Pointer chasing latency: %.2f ns (count: %d)\n", nsPerAccess, count)
-	fmt.Printf("Memory address of last node: %p\n", unsafe.Pointer(node))
+// printHelp shows usage information
+func printHelp() {
+	fmt.Println("Memory Latency and Cache Test Suite")
+	fmt.Println("\nUsage:")
+	fmt.Println("  gomemtest [options]")
+	fmt.Println("\nOptions:")
+	fmt.Println("  -size=N      Size of memory to test in MB (default: 256)")
+	fmt.Println("  -iter=N      Number of iterations for tests (default: 1,000,000)")
+	fmt.Println("  -basic       Run basic memory tests (default: true)")
+	fmt.Println("  -advanced    Run advanced latency tests (default: true)")
+	fmt.Println("  -cache       Run cache detection and testing (default: true)")
+	fmt.Println("  -help        Show this help message")
+	fmt.Println("\nExamples:")
+	fmt.Println("  gomemtest -size=512")
+	fmt.Println("  gomemtest -cache=false -basic=true -advanced=false")
 }
